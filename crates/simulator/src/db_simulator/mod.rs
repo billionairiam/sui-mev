@@ -26,7 +26,7 @@ use sui_json_rpc::{get_balance_changes_from_effect, ObjectProvider};
 use sui_json_rpc_types::{BalanceChange, SuiTransactionBlockEffects, SuiTransactionBlockEvents};
 use sui_sdk::SUI_COIN_TYPE;
 use sui_types::{
-    base_types::{ObjectID, SequenceNumber},
+    base_types::{ObjectID, SequenceNumber, FullObjectID},
     committee::{EpochId, ProtocolVersion},
     digests::TransactionDigest,
     effects::TransactionEffects,
@@ -190,10 +190,10 @@ impl DBSimulator {
                 InputObjectKind::SharedMoveObject { id, .. } => match self.store.get_object(id) {
                     Some(object) => input_results[i] = Some(ObjectReadResult::new(*kind, object.into())),
                     None => {
-                        if let Some((version, digest)) = self.store.get_last_shared_object_deletion_info(id, epoch_id) {
+                        if let Some((version, digest)) = self.store.get_last_consensus_stream_end_info(FullObjectID::new(*id, None), epoch_id) {
                             input_results[i] = Some(ObjectReadResult {
                                 input_object_kind: *kind,
-                                object: ObjectReadResultKind::DeletedSharedObject(version, digest),
+                                object: ObjectReadResultKind::ObjectConsensusStreamEnded(version, digest),
                             });
                         } else {
                             return Err(SuiError::from(kind.object_not_found_error()));
@@ -337,13 +337,14 @@ impl Simulator for DBSimulator {
         }
 
         let digest = tx.digest();
-        let kind = tx.into_kind();
+        let kind = tx.clone().into_kind();
         let input_object_kinds = input_objects.object_kinds().cloned().collect::<Vec<_>>();
 
         let simulate_start = std::time::Instant::now();
-
+        let mut gas_data = tx.gas_data().clone();
+        gas_data.payment = gas_ref;
         let (inner_temporary_store, effects) = catch_unwind(AssertUnwindSafe(|| {
-            let (inner_temporary_store, _, effects, _) = self.executor.execute_transaction_to_effects(
+            let (inner_temporary_store, _, effects, _, _) = self.executor.execute_transaction_to_effects(
                 &override_cache,
                 &self.protocol_config,
                 self.metrics.clone(),
@@ -352,11 +353,12 @@ impl Simulator for DBSimulator {
                 &epoch.epoch_id,
                 epoch.epoch_start_timestamp,
                 CheckedInputObjects::new_with_checked_transaction_inputs(input_objects),
-                gas_ref,
+                gas_data,
                 gas_status,
                 kind,
                 sender,
                 digest,
+                &mut None,
             );
             (inner_temporary_store, effects)
         }))

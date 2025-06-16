@@ -1,11 +1,11 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::sync::{Arc, RwLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use sui_core::authority::authority_per_epoch_store::AuthorityPerEpochStore;
-use sui_core::authority::SuiLockResult;
+use sui_core::authority::authority_store::SuiLockResult;
 use sui_core::execution_cache::{ObjectCacheRead, WritebackCache};
-use sui_types::base_types::{ObjectID, ObjectRef, SequenceNumber, VersionNumber};
+use sui_types::base_types::{ObjectID, ObjectRef, SequenceNumber, VersionNumber, FullObjectID};
 use sui_types::bridge::Bridge;
 use sui_types::clock::Clock;
 use sui_types::committee::EpochId;
@@ -14,7 +14,7 @@ use sui_types::error::{SuiError, SuiResult, UserInputError};
 use sui_types::id::{ID, UID};
 use sui_types::messages_checkpoint::CheckpointSequenceNumber;
 use sui_types::object::{Data, MoveObject, Object, ObjectInner, Owner, OBJECT_START_VERSION};
-use sui_types::storage::{MarkerValue, ObjectKey, ObjectOrTombstone, PackageObject};
+use sui_types::storage::{MarkerValue, ObjectKey, ObjectOrTombstone, PackageObject, FullObjectKey, InputKey};
 use sui_types::sui_system_state::SuiSystemState;
 use sui_types::transaction::ObjectReadResultKind;
 use sui_types::SUI_CLOCK_OBJECT_ID;
@@ -22,6 +22,9 @@ use sui_types::{
     storage::{BackingPackageStore, ChildObjectResolver, ObjectStore, ParentSync},
     transaction::ObjectReadResult,
 };
+
+use futures::future::BoxFuture;
+use futures::FutureExt;
 use tracing::warn;
 
 macro_rules! ret_latest_clock_obj {
@@ -88,7 +91,7 @@ impl OverrideCache {
         match self.get_override(object_id) {
             Some(r) => match r.object {
                 ObjectReadResultKind::Object(object) => Some(object),
-                ObjectReadResultKind::DeletedSharedObject(_, _) => None,
+                ObjectReadResultKind::ObjectConsensusStreamEnded(_, _) => None,
                 ObjectReadResultKind::CancelledTransactionSharedObject(_) => unreachable!(),
             },
             _ => None,
@@ -152,7 +155,8 @@ impl ChildObjectResolver for OverrideCache {
         // These two cases must remain indisguishable to the caller otherwise we risk forks in
         // transaction replay due to possible reordering of transactions during replay.
         if recv_object.owner != Owner::AddressOwner((*owner).into())
-            || self.have_received_object_at_version(receiving_object_id, receive_object_at_version, epoch_id)
+            || self.have_received_object_at_version(
+        FullObjectKey::new(FullObjectID::new(*receiving_object_id, None), receive_object_at_version), epoch_id)
         {
             return Ok(None);
         }
@@ -181,7 +185,7 @@ impl ObjectCacheRead for OverrideCache {
         if let Some(override_object) = self.get_override(id) {
             match override_object.object {
                 ObjectReadResultKind::Object(object) => return Ok(Some(PackageObject::new(object))),
-                ObjectReadResultKind::DeletedSharedObject(_, _) => return Ok(None),
+                ObjectReadResultKind::ObjectConsensusStreamEnded(_, _) => return Ok(None),
                 ObjectReadResultKind::CancelledTransactionSharedObject(_) => {
                     unreachable!("override object is in cancelled transaction")
                 }
@@ -207,7 +211,7 @@ impl ObjectCacheRead for OverrideCache {
         if let Some(override_object) = self.get_override(id) {
             match override_object.object {
                 ObjectReadResultKind::Object(object) => return Some(object),
-                ObjectReadResultKind::DeletedSharedObject(_, _) => return None,
+                ObjectReadResultKind::ObjectConsensusStreamEnded(_, _) => return None,
                 ObjectReadResultKind::CancelledTransactionSharedObject(_) => {
                     unreachable!("override object is in cancelled transaction")
                 }
@@ -255,7 +259,7 @@ impl ObjectCacheRead for OverrideCache {
                         ObjectOrTombstone::Object(object),
                     ))
                 }
-                ObjectReadResultKind::DeletedSharedObject(_, _) => {
+                ObjectReadResultKind::ObjectConsensusStreamEnded(_, _) => {
                     let undeleted_object = match self.fallback.as_ref()?.get_object(&object_id) {
                         Some(object) => object,
                         // is it possible?
@@ -287,7 +291,7 @@ impl ObjectCacheRead for OverrideCache {
                         return Some(object);
                     }
                 }
-                ObjectReadResultKind::DeletedSharedObject(_, _) => return None,
+                ObjectReadResultKind::ObjectConsensusStreamEnded(_, _) => return None,
                 ObjectReadResultKind::CancelledTransactionSharedObject(_) => {
                     unreachable!("override object is in cancelled transaction")
                 }
@@ -350,7 +354,7 @@ impl ObjectCacheRead for OverrideCache {
                 ObjectReadResultKind::Object(object) => {
                     return Ok(object.compute_object_reference());
                 }
-                ObjectReadResultKind::DeletedSharedObject(_, _) => {
+                ObjectReadResultKind::ObjectConsensusStreamEnded(_, _) => {
                     return Err(SuiError::UserInputError {
                         error: UserInputError::ObjectNotFound {
                             object_id,
@@ -405,24 +409,46 @@ impl ObjectCacheRead for OverrideCache {
 
     fn get_marker_value(
         &self,
-        object_id: &ObjectID,
-        version: SequenceNumber,
-        epoch_id: EpochId,
+        object_key: FullObjectKey,
+        epoch_id: EpochId
     ) -> Option<MarkerValue> {
-        // TODO: implement
-        self.fallback.as_ref()?.get_marker_value(object_id, version, epoch_id)
+        self.fallback.as_ref()?.get_marker_value(object_key, epoch_id)
     }
 
-    fn get_latest_marker(&self, object_id: &ObjectID, epoch_id: EpochId) -> Option<(SequenceNumber, MarkerValue)> {
-        // TODO: implement
-        self.fallback.as_ref()?.get_latest_marker(object_id, epoch_id)
-    }
-
-    fn get_highest_pruned_checkpoint(&self) -> CheckpointSequenceNumber {
+    fn get_highest_pruned_checkpoint(&self) -> Option<CheckpointSequenceNumber> {
         if let Some(ref fallback) = self.fallback {
             fallback.get_highest_pruned_checkpoint()
         } else {
-            CheckpointSequenceNumber::default()
+            Some(CheckpointSequenceNumber::default())
         }
+    }
+
+    fn get_latest_marker(
+        &self,
+        object_id: FullObjectID,
+        epoch_id: EpochId,
+    ) -> Option<(SequenceNumber, MarkerValue)> {
+        self.fallback.as_ref()?.get_latest_marker(object_id, epoch_id)
+    }
+
+    fn multi_input_objects_available_cache_only(&self, keys: &[InputKey]) -> Vec<bool> {
+        if let Some(ref fallback) = self.fallback {
+            fallback.multi_input_objects_available_cache_only(keys)
+        } else {
+            [false].into()
+        }
+    }
+
+    fn notify_read_input_objects<'a>(
+        &'a self,
+        input_and_receiving_keys: &'a [InputKey],
+        receiving_keys: &'a HashSet<InputKey>,
+        epoch: &'a EpochId,
+    ) -> BoxFuture<'a, ()> {
+        if let Some(ref fallback) = self.fallback {
+            fallback.notify_read_input_objects(input_and_receiving_keys, receiving_keys, epoch)
+        } else {
+            async {}.boxed()
+        }       
     }
 }
