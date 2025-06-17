@@ -10,6 +10,7 @@ use sui_types::{
     base_types::{ObjectID, ObjectRef, SuiAddress},
     transaction::{Argument, Command, ObjectArg, ProgrammableTransaction, TransactionData},
     Identifier, TypeTag,
+    MOVE_STDLIB_PACKAGE_ID, SUI_CLOCK_OBJECT_ID, SUI_CLOCK_OBJECT_SHARED_VERSION,
 };
 use tokio::sync::OnceCell;
 use utils::{coin, new_test_sui_client, object::*};
@@ -33,6 +34,7 @@ pub struct ObjectArgs {
     treasury: ObjectArg,
     insurance_fund: ObjectArg,
     referral_vault: ObjectArg,
+    clock_arg: ObjectArg,
 }
 
 static OBJ_CACHE: OnceCell<ObjectArgs> = OnceCell::const_new();
@@ -60,6 +62,7 @@ async fn get_object_args(simulator: Arc<Box<dyn Simulator>>) -> ObjectArgs {
                 .get_object(&ObjectID::from_hex_literal(REFERRAL_VAULT).unwrap())
                 .await
                 .unwrap();
+            let clock = simulator.get_object(&SUI_CLOCK_OBJECT_ID).await.unwrap();
 
             ObjectArgs {
                 pool_registry: shared_obj_arg(&pool_registry, false),
@@ -67,6 +70,7 @@ async fn get_object_args(simulator: Arc<Box<dyn Simulator>>) -> ObjectArgs {
                 treasury: shared_obj_arg(&treasury, true),
                 insurance_fund: shared_obj_arg(&insurance_fund, true),
                 referral_vault: shared_obj_arg(&referral_vault, false),
+                clock_arg: shared_obj_arg(&clock, false),
             }
         })
         .await
@@ -91,6 +95,7 @@ pub struct Aftermath {
     swap_fee_out: u64,
     index_in: usize,
     index_out: usize,
+    clock_arg: ObjectArg,
 }
 
 impl Aftermath {
@@ -138,6 +143,7 @@ impl Aftermath {
             treasury,
             insurance_fund,
             referral_vault,
+            clock_arg,
         } = get_object_args(simulator.clone()).await;
 
         if let Some(coin_out_type) = coin_out_type {
@@ -163,6 +169,7 @@ impl Aftermath {
                 swap_fee_out: fees_swap_out[index_out],
                 index_in,
                 index_out,
+                clock_arg,
             }]);
         }
 
@@ -192,6 +199,7 @@ impl Aftermath {
                 swap_fee_out: fees_swap_out[index_out],
                 index_in,
                 index_out,
+                clock_arg,
             });
         }
 
@@ -232,6 +240,32 @@ impl Aftermath {
 
         let referral_vault_arg = ctx.obj(self.referral_vault).map_err(|e| eyre!(e))?;
 
+        let coin_in_type_tag = TypeTag::from_str(&self.coin_in_type).map_err(|e| eyre!(e))?;
+        let module_vector = Identifier::new("vector").map_err(|e| eyre!(e))?;
+        let func_empty = Identifier::new("empty").map_err(|e| eyre!(e))?;
+        let func_push_back = Identifier::new("push_back").map_err(|e| eyre!(e))?;
+        
+        let cmd_empty_vec = Command::move_call(
+            MOVE_STDLIB_PACKAGE_ID,
+            module_vector.clone(),
+            func_empty,
+            vec![coin_in_type_tag.clone()],
+            vec![],
+        );
+        ctx.command(cmd_empty_vec);
+        let coins_vec_arg = Argument::Result(ctx.last_command_idx());
+
+        let cmd_push_back = Command::move_call(
+            MOVE_STDLIB_PACKAGE_ID,
+            module_vector,
+            func_push_back,
+            vec![coin_in_type_tag],
+            vec![coins_vec_arg, coin_in_arg],
+        );
+        ctx.command(cmd_push_back);
+
+        let clock_arg = ctx.obj(self.clock_arg).map_err(|e| eyre!(e))?;
+
         let amount_out = self.expect_amount_out(amount_in)?;
         let expect_amount_out = ctx.pure(amount_out).map_err(|e| eyre!(e))?;
         let slippage = ctx.pure(SLIPPAGE as u64).map_err(|e| eyre!(e))?;
@@ -243,9 +277,10 @@ impl Aftermath {
             treasury_arg,
             insurance_fund_arg,
             referral_vault_arg,
-            coin_in_arg,
+            coins_vec_arg,
             expect_amount_out,
             slippage,
+            clock_arg,
         ])
     }
 
