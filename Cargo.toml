@@ -24,20 +24,20 @@ version = { path = "crates/version" }
 primitive-types = "0.13"
 
 fastcrypto = { git = "https://github.com/MystenLabs/fastcrypto", rev = "69d496c71fb37e3d22fe85e5bbfd4256d61422b9" }
-sui-network = { path = "/home/ubuntu/coco/sui/crates/sui-network" }
-sui-types = { path = "/home/ubuntu/coco/sui/crates/sui-types" }
-sui-core = { path = "/home/ubuntu/coco/sui/crates/sui-core" }
-sui-execution = { path = "/home/ubuntu/coco/sui/sui-execution" }
-sui-sdk = { path = "/home/ubuntu/coco/sui/crates/sui-sdk" }
-sui-config = { path = "/home/ubuntu/coco/sui/crates/sui-config" }
-sui-json-rpc = { path = "/home/ubuntu/coco/sui/crates/sui-json-rpc" }
-sui-json-rpc-types = { path = "/home/ubuntu/coco/sui/crates/sui-json-rpc-types" }
-sui-indexer = { path = "/home/ubuntu/coco/sui/crates/sui-indexer" }
-mysten-network = { path = "/home/ubuntu/coco/sui/crates/mysten-network" }
-typed-store = { path = "/home/ubuntu/coco/sui/crates/typed-store" }
-move-bytecode-utils = { path = "/home/ubuntu/coco/sui/external-crates/move/crates/move-bytecode-utils" }
-move-core-types = { path = "/home/ubuntu/coco/sui/external-crates/move/crates/move-core-types" }
-shared-crypto = { path = "/home/ubuntu/coco/sui/crates/shared-crypto" }
+sui-network = { path = "/home/maliang/sui/crates/sui-network" }
+sui-types = { path = "/home/maliang/sui/crates/sui-types" }
+sui-core = { path = "/home/maliang/sui/crates/sui-core" }
+sui-execution = { path = "/home/maliang/sui/sui-execution" }
+sui-sdk = { path = "/home/maliang/sui/crates/sui-sdk" }
+sui-config = { path = "/home/maliang/sui/crates/sui-config" }
+sui-json-rpc = { path = "/home/maliang/sui/crates/sui-json-rpc" }
+sui-json-rpc-types = { path = "/home/maliang/sui/crates/sui-json-rpc-types" }
+sui-indexer = { path = "/home/maliang/sui/crates/sui-indexer" }
+mysten-network = { path = "/home/maliang/sui/crates/mysten-network" }
+typed-store = { path = "/home/maliang/sui/crates/typed-store" }
+move-bytecode-utils = { path = "/home/maliang/sui/external-crates/move/crates/move-bytecode-utils" }
+move-core-types = { path = "/home/maliang/sui/external-crates/move/crates/move-core-types" }
+shared-crypto = { path = "/home/maliang/sui/crates/shared-crypto" }
 
 async-trait = "0.1.61"
 async-stream = "0.3"
