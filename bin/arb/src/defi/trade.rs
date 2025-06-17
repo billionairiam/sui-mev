@@ -109,7 +109,7 @@ impl Trader {
         let status = resp.effects.status();
 
         match status {
-            SuiExecutionStatus::Success => {}
+            SuiExecutionStatus::Success => { tracing::info!("get_trade_result success"); }
             SuiExecutionStatus::Failure { error } => {
                 // ignore "MoveAbort"
                 if !error.contains("MoveAbort") && !error.contains("InsufficientCoinBalance") {
