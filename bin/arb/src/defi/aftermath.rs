@@ -253,16 +253,17 @@ impl Aftermath {
             vec![],
         );
         ctx.command(cmd_empty_vec);
-        let coins_vec_arg = Argument::Result(ctx.last_command_idx());
+        let empty_vec_arg  = Argument::Result(ctx.last_command_idx());
 
         let cmd_push_back = Command::move_call(
             MOVE_STDLIB_PACKAGE_ID,
             module_vector,
             func_push_back,
             vec![coin_in_type_tag],
-            vec![coins_vec_arg, coin_in_arg],
+            vec![empty_vec_arg, coin_in_arg],
         );
         ctx.command(cmd_push_back);
+        let filled_vec_arg = Argument::Result(ctx.last_command_idx());
 
         let clock_arg = ctx.obj(self.clock_arg).map_err(|e| eyre!(e))?;
 
@@ -277,7 +278,7 @@ impl Aftermath {
             treasury_arg,
             insurance_fund_arg,
             referral_vault_arg,
-            coins_vec_arg,
+            filled_vec_arg,
             expect_amount_out,
             slippage,
             clock_arg,
