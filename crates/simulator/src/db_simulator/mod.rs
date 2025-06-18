@@ -264,7 +264,6 @@ impl Simulator for DBSimulator {
 
         let mut input_objects = self.get_input_objects(&tx.input_objects()?, epoch.epoch_id)?;
 
-        let sender = tx.sender();
         let original_gas = tx.gas().to_vec();
 
         let mock_gas_id =
@@ -337,11 +336,10 @@ impl Simulator for DBSimulator {
         }
 
         let digest = tx.digest();
-        let kind = tx.clone().into_kind();
         let input_object_kinds = input_objects.object_kinds().cloned().collect::<Vec<_>>();
 
         let simulate_start = std::time::Instant::now();
-        let mut gas_data = tx.gas_data().clone();
+        let (kind, sender, mut gas_data) = tx.execution_parts();
         gas_data.payment = gas_ref;
         let (inner_temporary_store, effects) = catch_unwind(AssertUnwindSafe(|| {
             let (inner_temporary_store, _, effects, _, _) = self.executor.execute_transaction_to_effects(
