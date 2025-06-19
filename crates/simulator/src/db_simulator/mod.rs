@@ -187,16 +187,32 @@ impl DBSimulator {
                         object: ObjectReadResultKind::Object(package),
                     });
                 }
-                InputObjectKind::SharedMoveObject { id, .. } => match self.store.get_object(id) {
-                    Some(object) => input_results[i] = Some(ObjectReadResult::new(*kind, object.into())),
-                    None => {
-                        if let Some((version, digest)) = self.store.get_last_consensus_stream_end_info(FullObjectID::new(*id, None), epoch_id) {
-                            input_results[i] = Some(ObjectReadResult {
-                                input_object_kind: *kind,
-                                object: ObjectReadResultKind::ObjectConsensusStreamEnded(version, digest),
-                            });
-                        } else {
-                            return Err(SuiError::from(kind.object_not_found_error()));
+                InputObjectKind::SharedMoveObject { .. } => {
+                    let input_full_id = kind.full_object_id();
+
+                    match self.store.get_object(&kind.object_id()) {
+                        // If full ID matches, we're done.
+                        // (Full ID may not match if object was transferred in or out of
+                        // consensus. We have to double-check this because cache is keyed
+                        // on ObjectID and not FullObjectID.)
+                        Some(object) if object.full_id() == input_full_id => {
+                            input_results[i] = Some(ObjectReadResult::new(*kind, object.into()))
+                        }
+                        _ => {
+                            // If the full ID doesn't match, check if the object's consensus
+                            // stream was ended.
+                            if let Some((version, digest)) = self
+                                .store.get_last_consensus_stream_end_info(input_full_id, epoch_id)
+                            {
+                                input_results[i] = Some(ObjectReadResult {
+                                    input_object_kind: *kind,
+                                    object: ObjectReadResultKind::ObjectConsensusStreamEnded(
+                                        version, digest,
+                                    ),
+                                });
+                            } else {
+                                return Err(SuiError::from(kind.object_not_found_error()));
+                            }
                         }
                     }
                 },
@@ -263,7 +279,7 @@ impl Simulator for DBSimulator {
         } = ctx;
 
         let mut input_objects = self.get_input_objects(&tx.input_objects()?, epoch.epoch_id)?;
-
+        let mut gas_data = tx.gas_data().clone();
         let original_gas = tx.gas().to_vec();
 
         let mock_gas_id =
@@ -339,7 +355,7 @@ impl Simulator for DBSimulator {
         let input_object_kinds = input_objects.object_kinds().cloned().collect::<Vec<_>>();
 
         let simulate_start = std::time::Instant::now();
-        let (kind, sender, mut gas_data) = tx.execution_parts();
+        let (kind, sender, _) = tx.execution_parts();
         gas_data.payment = gas_ref;
         let (inner_temporary_store, effects) = catch_unwind(AssertUnwindSafe(|| {
             let (inner_temporary_store, _, effects, _, _) = self.executor.execute_transaction_to_effects(
