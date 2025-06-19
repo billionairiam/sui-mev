@@ -129,7 +129,6 @@ impl Aftermath {
 
         let mut type_params = parsed_pool.type_.type_params.clone();
         let coin_in_type_tag = TypeTag::from_str(&coin_in_type).map_err(|e| eyre!(e))?;
-        type_params.push(coin_in_type_tag);
         let pool_arg = shared_obj_arg(&pool_obj, true);
 
         let ObjectArgs {
@@ -143,6 +142,7 @@ impl Aftermath {
         if let Some(coin_out_type) = coin_out_type {
             let coin_out_type_tag = TypeTag::from_str(&coin_out_type).map_err(|e| eyre!(e))?;
             type_params.push(coin_out_type_tag);
+            type_params.push(coin_in_type_tag);
 
             let index_out = pool.token_index(&coin_out_type).unwrap();
 
@@ -174,6 +174,7 @@ impl Aftermath {
             let mut type_params = type_params.clone();
             let coin_out_type_tag = TypeTag::from_str(&coin_out.token_type).map_err(|e| eyre!(e))?;
             type_params.push(coin_out_type_tag);
+            type_params.push(coin_in_type_tag.clone());
 
             res.push(Self {
                 pool_arg: pool_arg.clone(),
