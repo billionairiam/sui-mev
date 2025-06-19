@@ -71,4 +71,4 @@ interprocess = { version = "2", features = ["tokio"] }
 rayon = "1.10"
 
 [profile.release]
-debug = true
+debug = false
