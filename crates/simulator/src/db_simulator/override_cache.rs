@@ -192,7 +192,7 @@ impl ObjectCacheRead for OverrideCache {
             }
         }
 
-        //warn!("❗️ [get_package_object] override missing: {:?}", id);
+        warn!("❗️ [get_package_object] override missing: {:?}", id);
         if let Some(ref fallback) = self.fallback {
             fallback.get_package_object(id)
         } else {
@@ -218,7 +218,7 @@ impl ObjectCacheRead for OverrideCache {
             }
         }
 
-        //warn!("❗️ [get_object] override missing: {:?}", id);
+        warn!("❗️ [get_object] override missing: {:?}", id);
         if let Some(ref fallback) = self.fallback {
             // if not, check the fallback
             let obj = fallback.get_object(id);
@@ -236,10 +236,10 @@ impl ObjectCacheRead for OverrideCache {
             return Some(override_object.compute_object_reference());
         }
 
-        //warn!(
-         //   "❗️ [get_latest_object_ref_or_tombstone] override missing: {:?}",
-          //  object_id
-        //);
+        warn!(
+            "❗️ [get_latest_object_ref_or_tombstone] override missing: {:?}",
+            object_id
+        );
         // if it's not found, we lookup in fallback
         // if it's deleted, also lookup in fallback because it's not deleted in fallback
         // (we don't have object digest for deleted object in override)
@@ -275,7 +275,7 @@ impl ObjectCacheRead for OverrideCache {
             }
         }
 
-        //warn!("❗️ [get_latest_object_or_tombstone] override missing: {:?}", object_id);
+        warn!("❗️ [get_latest_object_or_tombstone] override missing: {:?}", object_id);
         if let Some(ref fallback) = self.fallback {
             fallback.get_latest_object_or_tombstone(object_id)
         } else {
@@ -298,10 +298,10 @@ impl ObjectCacheRead for OverrideCache {
             }
         }
 
-        //warn!(
-         //   "❗️ [get_object_by_key] override missing: {:?}, version: {:?}",
-          //  object_id, version
-        //);
+        warn!(
+            "❗️ [get_object_by_key] override missing: {:?}, version: {:?}",
+            object_id, version
+        );
         if let Some(ref fallback) = self.fallback {
             fallback.get_object_by_key(object_id, version)
         } else {
@@ -368,7 +368,7 @@ impl ObjectCacheRead for OverrideCache {
             }
         }
 
-        //warn!("❗️ [_get_live_objref] override missing: {:?}", object_id);
+        warn!("❗️ [_get_live_objref] override missing: {:?}", object_id);
         if let Some(ref fallback) = self.fallback {
             fallback._get_live_objref(object_id)
         } else {
