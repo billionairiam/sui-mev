@@ -135,3 +135,70 @@ async fn backfill_pools_for_protocol(
 
     Ok(())
 }
+
+mod test {
+    use sui_sdk::{
+        types::{base_types::ObjectID, event::EventID},
+        SuiClientBuilder, SUI_COIN_TYPE,
+    };
+
+    use std::{
+        collections::{HashMap, HashSet},
+        fmt::Debug,
+        sync::Arc,
+        time::Instant,
+    };
+    use tracing::{debug, error, info};
+
+    use crate::file_db;
+    use crate::supported_protocols;
+    use crate::DB;
+
+    pub const FILE_DB_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/data");
+
+    #[tokio::test]
+    async fn test_backfill_pools_for_protocol() {
+        let sui = SuiClientBuilder::default().build("https://rpc-mainnet.suiscan.xyz:443").await.unwrap();
+        let db = file_db::FileDB::new(FILE_DB_DIR, &supported_protocols()).unwrap();
+
+        let cursors = db.get_processed_cursors().unwrap();
+
+        for protocol in supported_protocols() {
+            let mut cursor = cursors.get(&protocol).cloned().flatten();
+            let filter = protocol.event_filter();
+
+            let mut page = sui
+                .event_api()
+                .query_events(filter.clone(), cursor, None, false)
+                .await.unwrap();
+            while !page.data.is_empty() {
+                let mut pools = vec![];
+                for event in &page.data {
+                    match protocol.sui_event_to_pool(event, &sui).await {
+                        Ok(pool) => {
+                            // token_pools
+                            info!("pool: {:?}", pool);
+                            pools.push(pool)
+                        }
+                        Err(e) => {
+                            error!("invalid {:?}: {:?}", event, e);
+                        }
+                    }
+                }
+
+                cursor = if page.has_next_page {
+                    page.next_cursor
+                } else {
+                    page.data.last().map(|e| e.id)
+                };
+                db.flush(&protocol, &pools, cursor).unwrap();
+
+                // thread::sleep(Duration::from_secs(1));
+                page = sui
+                    .event_api()
+                    .query_events(filter.clone(), cursor, None, false)
+                    .await.unwrap();
+            }
+        }
+    }
+}

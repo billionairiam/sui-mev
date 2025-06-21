@@ -94,7 +94,7 @@ impl DBSimulator {
             "/home/ubuntu/sui/db/live/store",
             "/home/ubuntu/sui/fullnode.yaml",
             None,
-            Some("/home/ubuntu/suiflow-relay/pool_related_ids.txt"),
+            Some("/home/ubuntu/sui/pool_related_ids.txt"),
         )
         .await
     }

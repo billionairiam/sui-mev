@@ -26,7 +26,7 @@ use sui_sdk::{
 
 use crate::{blockberry, normalize_coin_type};
 
-pub const SUI_RPC_NODE: &str = "";
+pub const SUI_RPC_NODE: &str = "https://rpc-mainnet.suiscan.xyz:443";
 
 #[cached(key = "String", convert = r##"{ coin_type.to_string() }"##, result = true)]
 pub async fn get_coin_decimals(sui: &SuiClient, coin_type: &str) -> Result<u8> {
